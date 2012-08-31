@@ -133,6 +133,7 @@ if __name__ == "__main__":
    while True:
       if not wdt.receive_sigterm():
          # should not be here, means we need restart a watchdog
+         print "[WDT] restart"
          wdt = Watchdog(w, 5)
          wdt.start()
       else:
