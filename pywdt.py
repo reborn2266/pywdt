@@ -120,8 +120,8 @@ class Worker(object):
       while True:
          print "[WORKER] running"
          time.sleep(1)
-         if (time.time() - enter_time) > 3:
-            break
+         #if (time.time() - enter_time) > 3:
+         #   break
 
     def destroy_working(self):
         print "[WORKER] destroy"
@@ -133,7 +133,7 @@ if __name__ == "__main__":
    while True:
       if not wdt.receive_sigterm():
          # should not be here, means we need restart a watchdog
-         wdt = ERSWatchdog(w, 5)
+         wdt = Watchdog(w, 5)
          wdt.start()
       else:
          break
