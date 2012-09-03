@@ -6,14 +6,10 @@ class TimeoutChecker(threading.Thread):
       super(TimeoutChecker, self).__init__()
       self.wdt = wdt
       self.timeout = timeout
-      self.is_stop = False
-
-   def stop(self):
-      self.is_stop = True
 
    def run(self):
       while True:
-         if self.is_stop:
+         if wdt.is_stop:
             break
          print "[WDT] check timeout"
          if (time.time() - self.wdt.last_kicked_time) > self.timeout:
@@ -27,14 +23,10 @@ class KickedChecker(threading.Thread):
    def __init__(self, wdt):
       super(KickedChecker, self).__init__()
       self.wdt = wdt
-      self.is_stop = False
-
-   def stop(self):
-      self.is_stop = True
 
    def run(self):
       while True:
-         if self.is_stop:
+         if wdt.is_stop:
             break
          # set READ side nonblock
          # we do this beacuse we want to check more status not just block in readline
@@ -57,24 +49,20 @@ class KickedChecker(threading.Thread):
          time.sleep(1)
 
 class Watchdog(object):
-   def __init__(self, worker, period=10):
-      self.worker = worker
+   def __init__(self, period=10):
       self.check_period = period
+      self.reset_members(self.check_period)
+
+   def reset_members(self, period):
       self.pipe_rfd, self.pipe_wfd = os.pipe()
       self.pipe_r, self.pipe_w = os.fdopen(self.pipe_rfd, 'r', 0), os.fdopen(self.pipe_wfd, 'w', 0)
       self.got_sigterm = False
+      self.is_stop = False
 
    def receive_sigterm(self):
       return self.got_sigterm
 
-   def start(self):
-      def on_term(sig, func=None):
-         self.got_sigterm = True
-
-      signal.signal(signal.SIGTERM, on_term)
-      signal.signal(signal.SIGINT, on_term)
-      signal.signal(signal.SIGQUIT, on_term)
-
+   def start_once(self):
       try:
          self.worker_pid = os.fork()
       except OSError:
@@ -84,12 +72,7 @@ class Watchdog(object):
       if self.worker_pid == 0:
          # Mmm, I am child, need to be a worker...
          self.pipe_r.close()
-         while True:
-            self.worker.working()
-            # kick watchdog
-            print >>self.pipe_w, "Y"
-            self.pipe_w.flush()
-            print "[WORKER WRAPPER] kick wdt"
+         return 0
       else:
          # I am parent, need to take care the status of worker and handle when bad things happen
          self.pipe_w.close()
@@ -103,39 +86,59 @@ class Watchdog(object):
          while True:
             if self.is_timeout or self.got_sigterm:
                print "[WDT] stop checkers"
-               self.timeout_checker.stop()
-               self.kicked_checker.stop()
+               self.is_stop = True
                self.timeout_checker.join()
                self.kicked_checker.join()
                print "[WDT] kill worker"
                os.kill(self.worker_pid, signal.SIGKILL)
                os.waitpid(self.worker_pid, 0)
-               break
+               self.pipe_r.close()
+               if self.is_timeout:
+                  return 1
+               elif self.got_sigterm:
+                  return 2
             else:
                time.sleep(1)
 
+   def start(self):
+      def on_term(sig, func=None):
+         self.got_sigterm = True
+
+      signal.signal(signal.SIGTERM, on_term)
+      signal.signal(signal.SIGINT, on_term)
+      signal.signal(signal.SIGQUIT, on_term)
+
+      while True:
+         ret = self.start_once()
+         if ret == 0:
+            break
+         elif ret == 1:
+            self.reset_members(self.check_period)
+         else:
+            sys.exit(1)
+
+   def kick(self):
+      print >>self.pipe_w, "Y"
+      self.pipe_w.flush()
+
 class Worker(object):
-    def working(self):
+   def __init__(self, wdt):
+      self.wdt = wdt
+
+   def working(self):
       enter_time = time.time()
       while True:
          print "[WORKER] running"
          time.sleep(1)
-         #if (time.time() - enter_time) > 3:
-         #   break
+         #self.wdt.kick()
 
-    def destroy_working(self):
-        print "[WORKER] destroy"
+   def destroy_working(self):
+      print "[WORKER] destroy"
 
 if __name__ == "__main__":
-   w = Worker()
-   wdt = Watchdog(w, 5)
+   wdt = Watchdog(5)
+   w = Worker(wdt)
    wdt.start()
    while True:
-      if not wdt.receive_sigterm():
-         # should not be here, means we need restart a watchdog
-         print "[WDT] restart"
-         wdt = Watchdog(w, 5)
-         wdt.start()
-      else:
-         break
-
+      print "[WDT] restart"
+      w.working()
