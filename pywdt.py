@@ -9,7 +9,7 @@ class TimeoutChecker(threading.Thread):
 
    def run(self):
       while True:
-         if wdt.is_stop:
+         if self.wdt.is_stop:
             break
          print "[WDT] check timeout"
          if (time.time() - self.wdt.last_kicked_time) > self.timeout:
@@ -26,7 +26,7 @@ class KickedChecker(threading.Thread):
 
    def run(self):
       while True:
-         if wdt.is_stop:
+         if self.wdt.is_stop:
             break
          # set READ side nonblock
          # we do this beacuse we want to check more status not just block in readline
