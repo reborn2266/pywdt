@@ -1,7 +1,7 @@
 import time
 from pywdt import *
 
-class HangedWorker(object):
+class CrashedWorker(object):
    def __init__(self, wdt):
       self.wdt = wdt
 
@@ -16,7 +16,7 @@ class HangedWorker(object):
       print "[WORKER] destroy"
 
 wdt = Watchdog(5)
-w = HangedWorker(wdt)
+w = CrashedWorker(wdt)
 wdt.start()
 while True:
    print "[WDT] restart"
