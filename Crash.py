@@ -18,6 +18,5 @@ class CrashedWorker(object):
 wdt = Watchdog(5)
 w = CrashedWorker(wdt)
 wdt.start()
-while True:
-   print "[WDT] restart"
-   w.working()
+print "[WDT] restart"
+w.working()
