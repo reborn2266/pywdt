@@ -49,8 +49,9 @@ class KickedChecker(threading.Thread):
          time.sleep(1)
 
 class Watchdog(object):
-   def __init__(self, period=10):
+   def __init__(self, before_restart=None, period=10):
       self.check_period = period
+      self.before_restart = before_restart
       self.reset_members(self.check_period)
 
    def reset_members(self, period):
@@ -113,6 +114,9 @@ class Watchdog(object):
          if ret == 0:
             break
          elif ret == 1:
+            # if there is user defined clean up, do it
+            if (self.before_restart != None):
+               self.before_restart()
             self.reset_members(self.check_period)
          else:
             sys.exit(1)
