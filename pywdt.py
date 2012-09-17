@@ -40,17 +40,18 @@ class KickedChecker(threading.Thread):
          fcntl.fcntl(self.wdt.pipe_rfd, fcntl.F_SETFL, os.O_NONBLOCK)
          data = None
 
-         try:
-            data = self.wdt.pipe_r.readline()
-         except IOError:
-            # since we use nonblock IO, this might happen when no data there
-            pass
+         while True:
+            try:
+               data = self.wdt.pipe_r.readline()
+            except IOError:
+               # since we use nonblock IO, this might happen when no data there
+               pass
 
-         if data:
-            #print data
-            print "[WDT] kicked"
-            with self.wdt.lock:
-               self.wdt.last_kicked_time = time.time()
+            if data:
+               #print data
+               print "[WDT] kicked"
+               with self.wdt.lock:
+                  self.wdt.last_kicked_time = time.time()
 
          # take a break
          time.sleep(1)
