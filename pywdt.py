@@ -9,14 +9,19 @@ class TimeoutChecker(threading.Thread):
 
    def run(self):
       while True:
-         if self.wdt.is_stop:
+         with self.wdt.lock:
+            is_stop = self.wdt.is_stop
+            last_kicked_time = self.wdt.last_kicked_time
+         if is_stop:
             break
          print "[WDT] check timeout"
-         if (time.time() - self.wdt.last_kicked_time) > self.timeout:
+         if (time.time() - last_kicked_time) > self.timeout:
             print "[WDT] timeout"
-            self.wdt.is_timeout = True
+            with self.wdt.lock:
+               self.wdt.is_timeout = True
          else:
-            self.wdt.is_timeout = False
+            with self.wdt.lock:
+               self.wdt.is_timeout = False
          time.sleep(1)
 
 class KickedChecker(threading.Thread):
@@ -26,8 +31,9 @@ class KickedChecker(threading.Thread):
 
    def run(self):
       while True:
-         if self.wdt.is_stop:
-            break
+         with self.wdt.lock:
+            if self.wdt.is_stop:
+               break
          # set READ side nonblock
          # we do this beacuse we want to check more status not just block in readline
          # Think about it: if worker not kick and blocked in readline, how can we break this loop?
@@ -43,13 +49,14 @@ class KickedChecker(threading.Thread):
          if data:
             #print data
             print "[WDT] kicked"
-            self.wdt.last_kicked_time = time.time()
+            with self.wdt.lock:
+               self.wdt.last_kicked_time = time.time()
 
          # take a break
          time.sleep(1)
 
 class Watchdog(object):
-   def __init__(self, before_restart=None, period=10):
+   def __init__(self, period=10, before_restart=None):
       self.check_period = period
       self.before_restart = before_restart
       self.reset_members(self.check_period)
@@ -59,6 +66,7 @@ class Watchdog(object):
       self.pipe_r, self.pipe_w = os.fdopen(self.pipe_rfd, 'r', 0), os.fdopen(self.pipe_wfd, 'w', 0)
       self.got_sigterm = False
       self.is_stop = False
+      self.lock = threading.Lock()
 
    def receive_sigterm(self):
       return self.got_sigterm
@@ -85,19 +93,24 @@ class Watchdog(object):
          self.kicked_checker.start()
 
          while True:
-            if self.is_timeout or self.got_sigterm:
+            with self.lock:
+               is_timeout = self.is_timeout
+               got_sigterm = self.got_sigterm
+            if is_timeout or got_sigterm:
                print "[WDT] stop checkers"
-               self.is_stop = True
+               with self.lock:
+                  self.is_stop = True
                self.timeout_checker.join()
                self.kicked_checker.join()
                print "[WDT] kill worker"
                os.kill(self.worker_pid, signal.SIGKILL)
                os.waitpid(self.worker_pid, 0)
                self.pipe_r.close()
-               if self.is_timeout:
-                  return 1
-               elif self.got_sigterm:
+
+               if got_sigterm:
                   return 2
+               elif is_timeout:
+                  return 1
             else:
                time.sleep(1)
 
