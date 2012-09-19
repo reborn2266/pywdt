@@ -23,6 +23,7 @@ class TimeoutChecker(threading.Thread):
             with self.wdt.lock:
                self.wdt.is_timeout = False
          time.sleep(1)
+      print "TimeoutChecker done"
 
 class KickedChecker(threading.Thread):
    def __init__(self, wdt):
@@ -33,6 +34,7 @@ class KickedChecker(threading.Thread):
       while True:
          with self.wdt.lock:
             if self.wdt.is_stop:
+               print "sense stop"
                break
          # set READ side nonblock
          # we do this beacuse we want to check more status not just block in readline
@@ -41,6 +43,7 @@ class KickedChecker(threading.Thread):
          data = None
 
          while True:
+            time.sleep(1)
             try:
                data = self.wdt.pipe_r.readline()
             except IOError:
@@ -52,9 +55,12 @@ class KickedChecker(threading.Thread):
                print "[WDT] kicked"
                with self.wdt.lock:
                   self.wdt.last_kicked_time = time.time()
+            else:
+               break
 
          # take a break
          time.sleep(1)
+      print "KickedChecker done"
 
 class Watchdog(object):
    def __init__(self, period=10, before_restart=None):
@@ -97,15 +103,25 @@ class Watchdog(object):
             with self.lock:
                is_timeout = self.is_timeout
                got_sigterm = self.got_sigterm
+
+            is_crash = False
+            if os.waitpid(self.worker_pid, os.WNOHANG)[1] != 0:
+               is_timeout = True
+               is_crash = True
+
             if is_timeout or got_sigterm:
                print "[WDT] stop checkers"
                with self.lock:
                   self.is_stop = True
+               print "[WDT] stopping"
                self.timeout_checker.join()
                self.kicked_checker.join()
                print "[WDT] kill worker"
-               os.kill(self.worker_pid, signal.SIGKILL)
-               os.waitpid(self.worker_pid, 0)
+
+               if is_crash == False:
+                  os.kill(self.worker_pid, signal.SIGKILL)
+                  os.waitpid(self.worker_pid, 0)
+
                self.pipe_r.close()
 
                if got_sigterm:
@@ -128,6 +144,9 @@ class Watchdog(object):
          if ret == 0:
             break
          elif ret == 1:
+            # before restart, might receive sigterm again, double check
+            if self.got_sigterm:
+               os._exit(os.EX_OK)
             # if there is user defined clean up, do it
             if (self.before_restart != None):
                self.before_restart()
