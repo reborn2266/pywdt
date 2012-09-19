@@ -23,7 +23,6 @@ class TimeoutChecker(threading.Thread):
             with self.wdt.lock:
                self.wdt.is_timeout = False
          time.sleep(1)
-      print "TimeoutChecker done"
 
 class KickedChecker(threading.Thread):
    def __init__(self, wdt):
@@ -34,16 +33,15 @@ class KickedChecker(threading.Thread):
       while True:
          with self.wdt.lock:
             if self.wdt.is_stop:
-               print "sense stop"
                break
+
          # set READ side nonblock
          # we do this beacuse we want to check more status not just block in readline
          # Think about it: if worker not kick and blocked in readline, how can we break this loop?
          fcntl.fcntl(self.wdt.pipe_rfd, fcntl.F_SETFL, os.O_NONBLOCK)
-         data = None
 
          while True:
-            time.sleep(1)
+            data = None
             try:
                data = self.wdt.pipe_r.readline()
             except IOError:
@@ -60,7 +58,6 @@ class KickedChecker(threading.Thread):
 
          # take a break
          time.sleep(1)
-      print "KickedChecker done"
 
 class Watchdog(object):
    def __init__(self, period=10, before_restart=None):
@@ -152,7 +149,7 @@ class Watchdog(object):
                self.before_restart()
             self.reset_members(self.check_period)
          else:
-            sys.exit(1)
+            os._exit(os.EX_OK)
 
    def kick(self):
       print >>self.pipe_w, "Y"
